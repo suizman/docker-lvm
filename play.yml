@@ -1,0 +1,59 @@
+---
+  - name: LVM test
+    hosts: all
+    become: yes
+    vars:
+      device: /dev/xvdb
+
+    tasks:
+      - name: Install lvm package
+        yum:
+          name: lvm2
+          state: present
+
+      - lvg:
+          vg: vg-docker
+          pvs: "{{ device }}"
+
+      - lvol:
+          vg: vg-docker
+          lv: data
+          size: 80%VG
+
+      - lvol:
+         vg: vg-docker
+         lv: metadata
+         size: 4g
+
+      - name: Add Docker repository
+        copy:
+          src: ../files/docker.repo
+          dest: /etc/yum.repos.d/docker.repo
+
+      - name: Install docker package
+        yum:
+          name: docker-engine
+          state: present
+          update_cache: true
+
+      - name: Create systemd docker drop in
+        file:
+          path: /etc/systemd/system/docker.service.d
+          state: directory
+          recurse: yes
+
+      - name: Configure docker systemd drop in
+        template:
+          src: ../templates/docker.service.conf
+          dest: /etc/systemd/system/docker.service.d/docker.service.conf
+        register: systemd_unit
+
+      - name: Reload systemd configuration
+        command: systemctl daemon-reload
+        when: systemd_unit|changed
+
+      - name: Ensure docker is stared
+        service:
+          name: docker
+          state: started
+          enabled: yes
